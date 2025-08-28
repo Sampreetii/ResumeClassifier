@@ -1,41 +1,29 @@
 import streamlit as st
-import pickle
-import re
-import string
-import PyPDF2
-import io
+import pickle, re, string, pandas as pd
+import pdfplumber
 
-# Load model, vectorizer, and encoder
-with open('tfidf.pkl', 'rb') as f:
-    tfidf = pickle.load(f)
-with open('encoder.pkl', 'rb') as f:
-    le = pickle.load(f)
-with open('clf.pkl', 'rb') as f:
-    model = pickle.load(f)
+# ===== Load model, vectorizer, encoder =====
+tfidf = pickle.load(open('tfidf.pkl','rb'))
+le    = pickle.load(open('encoder.pkl','rb'))
+model = pickle.load(open('clf.pkl','rb'))
 
 def cleanResume(txt):
     txt = txt.lower()
-    txt = re.sub(r'http\S+|www\S+', ' ', txt)
-    txt = re.sub(r'\S+@\S+', ' ', txt)
-    txt = re.sub(r'@\w+', ' ', txt)
-    txt = re.sub(r'#\w+', ' ', txt)
-    txt = re.sub(r'<.*?>', ' ', txt)
+    txt = re.sub(r'http\S+|www\S+|\S+@\S+|@\w+|#\w+|<.*?>',' ',txt)
     txt = txt.translate(str.maketrans('', '', string.punctuation))
-    txt = re.sub(r'[^\x00-\x7F]+', ' ', txt)
-    txt = re.sub(r'\s+', ' ', txt).strip()
-    return txt
+    txt = re.sub(r'[^\x00-\x7F]+',' ',txt)
+    return re.sub(r'\s+',' ',txt).strip()
 
-def extract_text_from_pdf(pdf_file):
-    """Extract text from uploaded PDF file"""
+def extract_text_from_pdf(uploaded_file):
+    """Extract text using pdfplumber only."""
+    text = ""
     try:
-        pdf_reader = PyPDF2.PdfReader(pdf_file)
-        text = ""
-        for page in pdf_reader.pages:
-            text += page.extract_text()
-        return text
+        with pdfplumber.open(uploaded_file) as pdf:
+            for page in pdf.pages:
+                text += page.extract_text() or ""
     except Exception as e:
-        st.error(f"Error reading PDF: {str(e)}")
-        return None
+        st.error(f"Error reading {uploaded_file.name}: {e}")
+    return text
 
 def predict_category(resume_text):
     cleaned = cleanResume(resume_text)
@@ -43,35 +31,29 @@ def predict_category(resume_text):
     pred = model.predict(vectorized)
     return le.inverse_transform(pred)[0]
 
-# Streamlit UI
-st.set_page_config(
-    page_title="Resume Category Classifier",
-    page_icon="resumeicon.jpg",
-    layout="centered"
-)
-st.title("Resume Category Classifier")
-st.write("Upload a PDF resume or paste text below to predict the job category.")
+# ===== Streamlit UI =====
+st.set_page_config(page_title="Resume Category Classifier", page_icon="📄")
 
-# File upload option
-uploaded_file = st.file_uploader("Choose a PDF file", type=['pdf'])
+st.title("📄 Resume Category Classifier")
+st.write("Upload multiple PDF resumes to predict job categories.")
 
-# Text input option
-st.write("--- OR ---")
-resume_input = st.text_area("Paste Resume Text Here", height=300)
+uploaded_files = st.file_uploader("Choose PDF resumes", type=["pdf"], accept_multiple_files=True)
 
-# Prediction logic
-if st.button("Predict"):
-    if uploaded_file is not None:
-        # Process PDF
-        pdf_text = extract_text_from_pdf(uploaded_file)
-        if pdf_text:
-            st.write("**Extracted text from PDF:**")
-            st.text_area("PDF Content", pdf_text, height=200, disabled=True)
-            category = predict_category(pdf_text)
-            st.success(f"Predicted Category: **{category}**")
-    elif resume_input.strip():
-        # Process text input
-        category = predict_category(resume_input)
-        st.success(f"Predicted Category: **{category}**")
+if st.button("Predict Categories"):
+    if uploaded_files:
+        results = []
+        for file in uploaded_files:
+            text = extract_text_from_pdf(file)
+            if not text.strip():
+                st.warning(f"No text found in {file.name}. This PDF may be scanned or image-only.")
+                continue
+            category = predict_category(text)
+            results.append({"Filename": file.name, "Predicted Category": category})
+
+        if results:
+            df = pd.DataFrame(results)
+            st.dataframe(df, use_container_width=True)
+            csv = df.to_csv(index=False).encode("utf-8")
+            st.download_button("Download Results as CSV", csv, "resume_predictions.csv", "text/csv")
     else:
-        st.warning("Please upload a PDF file or paste resume text to predict.") 
+        st.warning("Please upload at least one PDF file.")
