@@ -25,7 +25,7 @@ This project also allowed me to apply practical NLP and machine learning skills 
 - This captures important terms and term frequency across resumes.
 
 ### 3. Model Training
-- A **Logistic Regression** model (or SVM) is trained to classify resumes into predefined categories (e.g., Software Engineer, Accountant, Aviation, etc.).
+- A **SVM** model is trained to classify resumes into predefined categories (e.g., Software Engineer, Accountant, Aviation, etc.).
 - Class imbalance is handled using `RandomOverSampler` from `imbalanced-learn`.
 
 ### 4. Evaluation
